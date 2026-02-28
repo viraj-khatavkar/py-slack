@@ -1921,6 +1921,51 @@ class EmojiMap
         'wales' => '🏴󠁧󠁢󠁷󠁬󠁳󠁿',
     ];
 
+    /** @var array<string, string> Slack-specific aliases not in gemoji */
+    private const SLACK_ALIASES = [
+        'eye-in-speech-bubble' => '👁️‍🗨️',
+        'face_palm' => '🤦',
+        'face_with_hand_over_mouth' => '🤭',
+        'face_with_monocle' => '🧐',
+        'face_with_raised_eyebrow' => '🤨',
+        'face_with_rolling_eyes' => '🙄',
+        'face_with_symbols_on_mouth' => '🤬',
+        'drum_with_drumsticks' => '🥁',
+        'first_place_medal' => '🥇',
+        'hugging_face' => '🤗',
+        'large_green_circle' => '🟢',
+        'male-student' => '👨‍🎓',
+        'male-technologist' => '👨‍💻',
+        'man-gesturing-ok' => '🙆‍♂️',
+        'man-raising-hand' => '🙋‍♂️',
+        'woman-raising-hand' => '🙋‍♀️',
+        'octagonal_sign' => '🛑',
+        'person_climbing' => '🧗',
+        'person_in_lotus_position' => '🧘',
+        'robot_face' => '🤖',
+        'rolled_up_newspaper' => '🗞️',
+        'rolling_on_the_floor_laughing' => '🤣',
+        'shopping_trolley' => '🛒',
+        'snow_capped_mountain' => '🏔️',
+        'spiral_calendar_pad' => '🗓️',
+        'spock-hand' => '🖖',
+        'thinking_face' => '🤔',
+        'unicorn_face' => '🦄',
+        'waving_black_flag' => '🏴',
+        'white_frowning_face' => '☹️',
+        'airplane_departure' => '🛫',
+        'flag-ae' => '🇦🇪',
+        'flag-br' => '🇧🇷',
+        'flag-eu' => '🇪🇺',
+        'flag-in' => '🇮🇳',
+        'flag-lk' => '🇱🇰',
+        'flag-pk' => '🇵🇰',
+        'flag-ps' => '🇵🇸',
+        'flag-th' => '🇹🇭',
+        'flag-tr' => '🇹🇷',
+        'flag-vn' => '🇻🇳',
+    ];
+
     private const SKIN_TONE_MODIFIERS = [
         2 => "\u{1F3FB}",
         3 => "\u{1F3FC}",
@@ -1931,19 +1976,25 @@ class EmojiMap
 
     public static function toUnicode(string $name): ?string
     {
-        if (str_contains($name, "::skin-tone-")) {
-            [$baseName, $tonePart] = explode("::", $name, 2);
-            $toneNumber = (int) str_replace("skin-tone-", "", $tonePart);
-            $baseEmoji = self::MAP[$baseName] ?? null;
+        if (str_contains($name, '::skin-tone-')) {
+            [$baseName, $tonePart] = explode('::', $name, 2);
+            $toneNumber = (int) str_replace('skin-tone-', '', $tonePart);
+            $baseEmoji = self::MAP[$baseName]
+                ?? self::MAP[str_replace('-', '_', $baseName)]
+                ?? self::SLACK_ALIASES[$baseName]
+                ?? null;
             $modifier = self::SKIN_TONE_MODIFIERS[$toneNumber] ?? null;
 
             if ($baseEmoji !== null && $modifier !== null) {
-                return $baseEmoji . $modifier;
+                return $baseEmoji.$modifier;
             }
 
             return $baseEmoji;
         }
 
-        return self::MAP[$name] ?? null;
+        return self::MAP[$name]
+            ?? self::MAP[str_replace('-', '_', $name)]
+            ?? self::SLACK_ALIASES[$name]
+            ?? null;
     }
 }

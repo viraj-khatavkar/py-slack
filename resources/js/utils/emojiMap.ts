@@ -1913,6 +1913,50 @@ const EMOJI_MAP: Record<string, string> = {
     'scotland': '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
     'wales': '🏴󠁧󠁢󠁷󠁬󠁳󠁿',};
 
+const SLACK_ALIASES: Record<string, string> = {
+    'eye-in-speech-bubble': '👁️‍🗨️',
+    'face_palm': '🤦',
+    'face_with_hand_over_mouth': '🤭',
+    'face_with_monocle': '🧐',
+    'face_with_raised_eyebrow': '🤨',
+    'face_with_rolling_eyes': '🙄',
+    'face_with_symbols_on_mouth': '🤬',
+    'drum_with_drumsticks': '🥁',
+    'first_place_medal': '🥇',
+    'hugging_face': '🤗',
+    'large_green_circle': '🟢',
+    'male-student': '👨‍🎓',
+    'male-technologist': '👨‍💻',
+    'man-gesturing-ok': '🙆‍♂️',
+    'man-raising-hand': '🙋‍♂️',
+    'woman-raising-hand': '🙋‍♀️',
+    'octagonal_sign': '🛑',
+    'person_climbing': '🧗',
+    'person_in_lotus_position': '🧘',
+    'robot_face': '🤖',
+    'rolled_up_newspaper': '🗞️',
+    'rolling_on_the_floor_laughing': '🤣',
+    'shopping_trolley': '🛒',
+    'snow_capped_mountain': '🏔️',
+    'spiral_calendar_pad': '🗓️',
+    'spock-hand': '🖖',
+    'thinking_face': '🤔',
+    'unicorn_face': '🦄',
+    'waving_black_flag': '🏴',
+    'white_frowning_face': '☹️',
+    'airplane_departure': '🛫',
+    'flag-ae': '🇦🇪',
+    'flag-br': '🇧🇷',
+    'flag-eu': '🇪🇺',
+    'flag-in': '🇮🇳',
+    'flag-lk': '🇱🇰',
+    'flag-pk': '🇵🇰',
+    'flag-ps': '🇵🇸',
+    'flag-th': '🇹🇭',
+    'flag-tr': '🇹🇷',
+    'flag-vn': '🇻🇳',
+};
+
 const SKIN_TONE_MODIFIERS: Record<number, string> = {
     2: '\u{1F3FB}',
     3: '\u{1F3FC}',
@@ -1925,7 +1969,7 @@ export function slackEmojiToUnicode(name: string): string {
     if (name.includes('::skin-tone-')) {
         const [baseName, tonePart] = name.split('::');
         const toneNumber = parseInt(tonePart.replace('skin-tone-', ''), 10);
-        const baseEmoji = EMOJI_MAP[baseName];
+        const baseEmoji = EMOJI_MAP[baseName] ?? EMOJI_MAP[baseName.replace(/-/g, '_')] ?? SLACK_ALIASES[baseName];
         const modifier = SKIN_TONE_MODIFIERS[toneNumber];
 
         if (baseEmoji && modifier) {
@@ -1937,5 +1981,5 @@ export function slackEmojiToUnicode(name: string): string {
         }
     }
 
-    return EMOJI_MAP[name] ?? `:${name}:`;
+    return EMOJI_MAP[name] ?? EMOJI_MAP[name.replace(/-/g, '_')] ?? SLACK_ALIASES[name] ?? `:${name}:`;
 }

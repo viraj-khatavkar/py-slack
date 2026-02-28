@@ -45,6 +45,8 @@ class ImportSlackArchivesCommand extends Command
             $this->info('Importing Messages...');
             $this->buildUserMaps();
 
+            DB::table('messages')->truncate();
+
             $channels = Channel::all();
 
             foreach ($channels as $channel) {
@@ -67,9 +69,7 @@ class ImportSlackArchivesCommand extends Command
 
             $this->newLine();
             $this->info('Updating channel message counts...');
-            foreach ($channels as $channel) {
-                $channel->update(['message_count' => $channel->messages()->count()]);
-            }
+            DB::statement('UPDATE channels SET message_count = (SELECT COUNT(*) FROM messages WHERE messages.channel_id = channels.id)');
             Cache::forget('channels');
         }
 
@@ -95,13 +95,11 @@ class ImportSlackArchivesCommand extends Command
     {
         $contents = File::get(Storage::path($fileName));
         $messages = json_decode($contents, associative: true);
+        $now = now()->format('Y-m-d H:i:s');
+        $batch = [];
 
         foreach ($messages as $message) {
-            if (! isset($message['type'])) {
-                continue;
-            }
-
-            if ($message['type'] !== 'message') {
+            if (! isset($message['type']) || $message['type'] !== 'message') {
                 continue;
             }
 
@@ -119,39 +117,33 @@ class ImportSlackArchivesCommand extends Command
                 continue;
             }
 
-            if (stripos($message['text'], '<http') !== false) {
-                $linksInMessage = explode('<http', $message['text']);
+            $text = $message['text'];
+
+            if (stripos($text, '<http') !== false) {
+                $linksInMessage = explode('<http', $text);
                 foreach ($linksInMessage as $linkInMessage) {
                     $array = explode('>', $linkInMessage);
                     $linkTotalInBrackets = $array[0];
                     $array = explode('|', $array[0]);
                     $linkInMessage = $array[0];
-                    $message['text'] = str_replace(
+                    $text = str_replace(
                         '<http'.$linkTotalInBrackets.'>',
                         '<a href="http'.$linkInMessage.'" target="_blank">http'.$linkInMessage.'</a>',
-                        $message['text']
+                        $text
                     );
                 }
             }
 
-            while (Str::of($message['text'])->contains('<@')) {
-                $str = Str::of($message['text'])
-                    ->betweenFirst('<@', '>');
-
+            while (str_contains($text, '<@')) {
+                $str = Str::of($text)->betweenFirst('<@', '>');
                 $atUserName = $this->userMap[$str->value()] ?? null;
 
-                if (is_null($atUserName)) {
-                    $message['text'] = Str::of($message['text'])
-                        ->replaceFirst('<@'.$str.'>', '<strong>@Unknown-User</strong>')
-                        ->value();
-                } else {
-                    $message['text'] = Str::of($message['text'])
-                        ->replaceFirst('<@'.$str.'>', '<strong>@'.$atUserName.'</strong>')
-                        ->value();
-                }
+                $text = is_null($atUserName)
+                    ? str_replace('<@'.$str.'>', '<strong>@Unknown-User</strong>', $text)
+                    : str_replace('<@'.$str.'>', '<strong>@'.$atUserName.'</strong>', $text);
             }
 
-            $message['text'] = $this->convertEmojisInText($message['text']);
+            $text = $this->convertEmojisInText($text);
 
             $slackMessageTime = Carbon::createFromTimestamp($message['ts'])->shiftTimezone('UTC')
                 ->setTimezone('Asia/Kolkata')
@@ -160,20 +152,31 @@ class ImportSlackArchivesCommand extends Command
             $reactions = $this->resolveReactions($message['reactions'] ?? []);
             $replyUsers = $this->resolveReplyUsers($message['reply_users'] ?? []);
 
-            Message::create([
+            $batch[] = [
                 'channel_id' => $channel->id,
                 'user_id' => $userId,
-                'content' => $message['text'],
+                'content' => $text,
                 'ts' => $message['ts'],
                 'thread_ts' => $message['thread_ts'] ?? null,
                 'slack_timestamp' => $slackMessageTime,
-                'reactions' => ! empty($reactions) ? $reactions : null,
+                'reactions' => ! empty($reactions) ? json_encode($reactions) : null,
                 'is_edited' => isset($message['edited']),
                 'has_files' => ! empty($message['files']),
-                'reply_users' => ! empty($replyUsers) ? $replyUsers : null,
+                'reply_users' => ! empty($replyUsers) ? json_encode($replyUsers) : null,
                 'reply_users_count' => $message['reply_users_count'] ?? 0,
                 'is_pinned' => false,
-            ]);
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+
+            if (count($batch) >= 500) {
+                DB::table('messages')->insert($batch);
+                $batch = [];
+            }
+        }
+
+        if (! empty($batch)) {
+            DB::table('messages')->insert($batch);
         }
     }
 
@@ -225,20 +228,24 @@ class ImportSlackArchivesCommand extends Command
 
     protected function mapThreads(): void
     {
-        $messages = Message::whereNotNull('thread_ts')->whereRaw('thread_ts = ts')->get();
-        $bar = $this->output->createProgressBar(count($messages));
+        $this->newLine();
 
-        foreach ($messages as $message) {
-            $bar->advance();
-            DB::table('messages')
-                ->where('thread_ts', $message->ts)
-                ->where('channel_id', $message->channel_id)
-                ->whereRaw('thread_ts != ts')
-                ->update([
-                    'parent_id' => $message->id,
-                ]);
-        }
-        $bar->finish();
+        $updated = DB::update('
+            UPDATE messages
+            SET parent_id = (
+                SELECT p.id
+                FROM messages p
+                WHERE p.ts = messages.thread_ts
+                  AND p.channel_id = messages.channel_id
+                  AND p.thread_ts = p.ts
+                LIMIT 1
+            )
+            WHERE messages.thread_ts IS NOT NULL
+              AND messages.thread_ts != messages.ts
+              AND messages.parent_id IS NULL
+        ');
+
+        $this->info("Mapped {$updated} messages to their parent threads.");
     }
 
     protected function importUsers(): void
@@ -250,8 +257,10 @@ class ImportSlackArchivesCommand extends Command
         $bar = $this->output->createProgressBar(count($users));
         $bar->start();
 
+        $batch = [];
+
         foreach ($users as $user) {
-            User::create([
+            $batch[] = [
                 'name' => empty($user['profile']['display_name']) ? $user['profile']['real_name'] : $user['profile']['display_name'],
                 'image_url' => $user['profile']['image_72'],
                 'slack_user_id' => $user['id'],
@@ -261,8 +270,20 @@ class ImportSlackArchivesCommand extends Command
                 'is_bot' => $user['is_bot'] ?? false,
                 'is_deleted' => $user['deleted'] ?? false,
                 'title' => ! empty($user['profile']['title']) ? $user['profile']['title'] : null,
-            ]);
-            $bar->advance();
+                'created_at' => now()->format('Y-m-d H:i:s'),
+                'updated_at' => now()->format('Y-m-d H:i:s'),
+            ];
+
+            if (count($batch) >= 500) {
+                DB::table('users')->insert($batch);
+                $bar->advance(count($batch));
+                $batch = [];
+            }
+        }
+
+        if (! empty($batch)) {
+            DB::table('users')->insert($batch);
+            $bar->advance(count($batch));
         }
 
         $bar->finish();
