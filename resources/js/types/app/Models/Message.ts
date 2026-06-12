@@ -18,6 +18,7 @@ export interface Message {
     channel_id: number;
     parent_id: number | null;
     content: string;
+    content_html: string;
     ts: string;
     thread_ts: string | null;
     slack_timestamp: string;

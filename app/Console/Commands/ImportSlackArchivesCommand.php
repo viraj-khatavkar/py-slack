@@ -16,7 +16,7 @@ use Illuminate\Support\Str;
 
 class ImportSlackArchivesCommand extends Command
 {
-    protected $signature = 'slack:import-archives {--users} {--channels} {--messages} {--map-threads} {--pins}';
+    protected $signature = 'slack:import-archives {--all : Run every import step in the correct order} {--users} {--channels} {--messages} {--map-threads} {--pins}';
 
     protected $description = 'Import Slack archive data from storage/app/slack-archive/';
 
@@ -31,17 +31,24 @@ class ImportSlackArchivesCommand extends Command
 
     public function handle(): void
     {
-        if ($this->option('users')) {
+        $all = $this->option('all');
+
+        if ($all) {
+            $this->info('Clearing existing messages...');
+            DB::table('messages')->truncate();
+        }
+
+        if ($all || $this->option('users')) {
             $this->info('Importing Users...');
             $this->importUsers();
         }
 
-        if ($this->option('channels')) {
+        if ($all || $this->option('channels')) {
             $this->info('Importing Channels...');
             $this->importChannels();
         }
 
-        if ($this->option('messages')) {
+        if ($all || $this->option('messages')) {
             $this->info('Importing Messages...');
             $this->buildUserMaps();
 
@@ -70,18 +77,33 @@ class ImportSlackArchivesCommand extends Command
             $this->newLine();
             $this->info('Updating channel message counts...');
             DB::statement('UPDATE channels SET message_count = (SELECT COUNT(*) FROM messages WHERE messages.channel_id = channels.id)');
+
+            $this->rebuildFullTextIndex();
+
             Cache::forget('channels');
+            Cache::forget('archive-stats');
+            Cache::forget('channel-activity');
         }
 
-        if ($this->option('map-threads')) {
+        if ($all || $this->option('map-threads')) {
             $this->info('Mapping Threads...');
             $this->mapThreads();
         }
 
-        if ($this->option('pins')) {
+        if ($all || $this->option('pins')) {
             $this->info('Importing Pins...');
             $this->importPins();
         }
+    }
+
+    protected function rebuildFullTextIndex(): void
+    {
+        if (DB::connection()->getDriverName() !== 'sqlite') {
+            return;
+        }
+
+        $this->info('Rebuilding full-text search index...');
+        DB::statement("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')");
     }
 
     protected function buildUserMaps(): void

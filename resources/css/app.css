@@ -6,7 +6,38 @@
 
 @theme inline {
     --font-sans:
-        Inter, ui-sans-serif, system-ui, sans-serif,
-        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-        'Noto Color Emoji';
+        Inter, ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+        'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+@layer components {
+    .msg-content {
+        overflow-wrap: break-word;
+    }
+
+    .msg-content a {
+        @apply font-medium text-indigo-600 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-800;
+        word-break: break-all;
+    }
+
+    .msg-content a.msg-mention {
+        @apply rounded bg-indigo-50 px-1 font-medium text-indigo-700 no-underline hover:bg-indigo-100;
+        word-break: normal;
+    }
+
+    .msg-content code.msg-code {
+        @apply rounded border border-gray-200 bg-gray-100 px-1 py-0.5 font-mono text-[0.8125em] text-rose-600;
+    }
+
+    .msg-content pre.msg-pre {
+        @apply my-1.5 overflow-x-auto rounded-md border border-gray-200 bg-gray-50 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-gray-800;
+    }
+
+    .msg-content blockquote.msg-quote {
+        @apply my-1 border-l-2 border-gray-300 pl-3 text-gray-600;
+    }
+
+    .msg-content mark.msg-mark {
+        @apply rounded-sm bg-amber-200 px-0.5 text-gray-900;
+    }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\SlackContent;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +14,8 @@ class Message extends Model
     /** @use HasFactory<\Database\Factories\MessageFactory> */
     use HasFactory;
 
+    protected $appends = ['content_html'];
+
     protected function casts(): array
     {
         return [
@@ -21,6 +25,12 @@ class Message extends Model
             'has_files' => 'boolean',
             'is_pinned' => 'boolean',
         ];
+    }
+
+    /** @return Attribute<string, never> */
+    protected function contentHtml(): Attribute
+    {
+        return Attribute::get(fn (): string => SlackContent::render($this->content ?? ''));
     }
 
     /** @return BelongsTo<User, $this> */
